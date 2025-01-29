@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"container/ring"
 	"fmt"
+	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -27,7 +28,10 @@ func (s *NegativeFilterStage) Process(input <-chan int) <-chan int {
 		defer close(output)
 		for num := range input {
 			if num >= 0 {
+				log.Printf("NegativeFilterStage: passed %d", num)
 				output <- num
+			} else {
+				log.Printf("NegativeFilterStage: filtered out %d", num)
 			}
 		}
 	}()
@@ -42,7 +46,10 @@ func (s *SpecialFilterStage) Process(input <-chan int) <-chan int {
 		defer close(output)
 		for num := range input {
 			if num != 0 && num%3 == 0 {
+				log.Printf("SpecialFilterStage: passed %d", num)
 				output <- num
+			} else {
+				log.Printf("SpecialFilterStage: filtered out %d", num)
 			}
 		}
 	}()
@@ -71,10 +78,13 @@ func (s *BufferStage) Process(input <-chan int) <-chan int {
 				}
 				s.buffer.Value = num
 				s.buffer = s.buffer.Next()
+				log.Printf("BufferStage: added %d to buffer", num)
 			case <-ticker.C:
+				log.Println("BufferStage: draining buffer")
 				s.buffer.Do(func(value interface{}) {
 					if value != nil {
 						output <- value.(int)
+						log.Printf("BufferStage: sent %d from buffer", value.(int))
 					}
 				})
 			}
@@ -84,6 +94,8 @@ func (s *BufferStage) Process(input <-chan int) <-chan int {
 }
 
 func main() {
+	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
+
 	dataSource := func() (<-chan int, chan struct{}) {
 		c := make(chan int)
 		done := make(chan struct{})
@@ -93,15 +105,18 @@ func main() {
 			for scanner.Scan() {
 				input := scanner.Text()
 				if strings.EqualFold(input, "exit") {
+					log.Println("Exiting program")
 					fmt.Println("Программа завершила работу!")
 					close(done)
 					return
 				}
 				num, err := strconv.Atoi(input)
 				if err != nil {
+					log.Printf("Invalid input: %s", input)
 					fmt.Println("Программа обрабатывает только целые числа!")
 					continue
 				}
+				log.Printf("DataSource: received %d", num)
 				c <- num
 			}
 		}()
@@ -115,6 +130,7 @@ func main() {
 				if !ok {
 					return
 				}
+				log.Printf("Consumer: processed data %d", num)
 				fmt.Printf("Обработаны данные: %d\n", num)
 			case <-done:
 				return
